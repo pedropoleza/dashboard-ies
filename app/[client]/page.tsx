@@ -12,6 +12,9 @@ import { LeadOrigin } from "@/components/LeadOrigin";
 import { SdrPerformance } from "@/components/SdrPerformance";
 import { PeopleInService } from "@/components/PeopleInService";
 import { DrillPanel } from "@/components/DrillPanel";
+import { configSeguros } from "@/lib/seguros/config";
+import { carregarSeguros } from "@/lib/seguros/dados";
+import { Painel, abaDaUrl } from "@/components/seguros/Painel";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +61,65 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
   const sp = await searchParams;
   const range = resolveRange(sp, client.timezone);
   const f = client.features;
+
+  // ── Perfil "seguros" ──────────────────────────────────────────────────────
+  // Contas de seguro e recrutamento (hoje: Eliane) precisam de três domínios
+  // que o painel padrão não cobre. Elas desviam aqui, com o mesmo cabeçalho,
+  // mesmo seletor de período e mesmos tokens visuais.
+  if (configSeguros(client.slug)) {
+    const janela = { inicio: range.start, fim: range.end };
+    let seg: Awaited<ReturnType<typeof carregarSeguros>> = null;
+    let erroSeg: string | null = null;
+    try {
+      seg = await carregarSeguros(client, janela);
+    } catch (e) {
+      erroSeg = e instanceof Error ? e.message : String(e);
+    }
+    const accent = {
+      "--color-ivy": client.accent,
+      "--color-ivy-bright": `color-mix(in srgb, ${client.accent} 80%, white)`,
+      "--color-ivy-deep": `color-mix(in srgb, ${client.accent} 78%, black)`,
+    } as React.CSSProperties;
+    return (
+      <main className="mx-auto max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8" style={accent}>
+        <Header
+          client={client}
+          preset={range.preset}
+          fromValue={typeof sp.from === "string" ? sp.from : undefined}
+          toValue={typeof sp.to === "string" ? sp.to : undefined}
+          lastSyncAt={seg?.ultimaSync ?? null}
+          sp={sp}
+        />
+        <div className="mt-6 space-y-5 sm:space-y-6">
+          {erroSeg ? (
+            <Notice title="Painel indisponível">
+              Não consegui ler os dados agora.
+              <span className="mt-2 block text-xs text-ink-faint">{erroSeg}</span>
+            </Notice>
+          ) : !seg ? null : !seg.ultimaSync ? (
+            <Notice title="Aguardando a primeira sincronização">
+              A conta está registrada. Rode{" "}
+              <code className="rounded bg-paper-2 px-1.5 py-0.5 text-[0.8em]">
+                /api/cron/sync?client={client.slug}
+              </code>{" "}
+              para carregar os dados do GoHighLevel.
+            </Notice>
+          ) : (
+            <>
+              <Painel slug={client.slug} sp={sp} aba={abaDaUrl(sp.aba)} d={seg} />
+              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-xs text-ink-faint">
+                <span>Sincronizado do GoHighLevel a cada 3 horas</span>
+                <span>
+                  Painel por <span className="text-ink-soft">Sparkleads</span>
+                </span>
+              </footer>
+            </>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   const scope = resolvePipeline(client, typeof sp.pipeline === "string" ? sp.pipeline : undefined);
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null;
