@@ -1,0 +1,30 @@
+{
+  "slug": "eliane",
+  "name": "Eliane de Souza",
+  "code": "EDS",
+  "city": "Union, NJ",
+  "location_id": "UPBHBX5RwcigLjECqvU8",
+  "company_id": "TdmQMjj86Y3LgppiB96K",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "locale": "pt-BR",
+  "accent": "#2f54eb",
+  "pipeline_id": "pNdcs7yI8ftr4fCEA1yF",
+  "sdr_user_ids": [],
+  "appt_stage_min": 3,
+  "won_stage_min": 9,
+  "appt_stage_ids": [],
+  "won_stage_ids": [],
+  "call_min_seconds": 0,
+  "won_label": "Clientes",
+  "pipelines": [],
+  "features": {
+    "kpis": false,
+    "funnel": false,
+    "leadOrigin": false,
+    "sdr": false,
+    "peopleInService": false,
+    "appointments": true
+  },
+  "active": true
+}

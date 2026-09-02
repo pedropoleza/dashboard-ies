@@ -6,6 +6,8 @@ export type Features = {
   leadOrigin: boolean;
   sdr: boolean;
   peopleInService: boolean;
+  /** sincroniza a agenda do GHL (reunião marcada, realizada, no-show) */
+  appointments: boolean;
 };
 
 export type PipelineCfg = {
@@ -46,6 +48,8 @@ const DEFAULT_FEATURES: Features = {
   leadOrigin: true,
   sdr: true,
   peopleInService: true,
+  // desligada por padrão: quem já roda hoje não ganha chamada de API à toa
+  appointments: false,
 };
 
 function normalize(row: any): ClientConfig {

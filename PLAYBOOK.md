@@ -86,3 +86,48 @@ Ask Pedro to add them in the GHL webhook — they arrive under `customData`.
   `TOKEN_SUPABASE_URL/SERVICE_ROLE_KEY` (read agency token), `CRON_SECRET`, `WEBHOOK_SECRET`, `DEFAULT_CLIENT`.
 - **Sync cadence:** Vercel cron daily (Hobby plan limit). Manual/instant: `GET /api/cron/sync?client=<slug>&secret=…`.
 - **Local preview:** `npm run dev`, dashboards at `localhost:3000/<slug>`.
+
+---
+
+## Perfil "seguros" (Eliane, 31/08/2026)
+
+Segundo tipo de dashboard na mesma plataforma, para contas de seguro que operam
+três domínios em vez de um funil: **Prospects**, **Recruiting** e **Agency**.
+Ativa quando `lib/seguros/config.ts` tem uma entrada para o slug do cliente.
+
+**Onde cada número nasce** (a conta da Eliane não usa o campo `source` do GHL,
+e os campos de agente do contato estão preenchidos em 8 de 1.200):
+
+| Métrica | Fonte | Data de referência |
+|---|---|---|
+| Novos leads / candidatos | oportunidades do pipeline | `created_at` |
+| Reuniões e entrevistas | tabela `appointments` (API de calendários) | `start_time` |
+| Comparecimento | `appointmentStatus` | showed ÷ (showed + noshow) |
+| Clientes e apólices | pipeline Policies | `created_at` da oportunidade |
+| Valor emitido | `monetary_value` | idem |
+| Registros de agente | estágio "Registrado" | `last_stage_change_at` |
+| Níveis de carreira | estágios do pipeline Agency | estado atual |
+| Origem | **tags do contato**, mapeadas em `config.ts` | idem ao lead |
+
+**Regras que o código carrega e é fácil perder de vista:**
+- reunião que já passou e continua "confirmed" é **sem marcação**, não presença;
+  a taxa ignora essas e o painel mostra quantas são;
+- a taxa é `null` quando nada foi marcado, e o painel escreve isso em vez de
+  mostrar 0%, que afirmaria "ninguém compareceu";
+- tag fora do mapa vira "Sem origem", nunca atribuição adivinhada;
+- "Registrado" conta quem está lá HOJE e entrou na janela: o GHL guarda só a
+  última mudança de estágio.
+
+**Sincronização:** cron de 3 em 3 horas só para este cliente
+(`/api/cron/sync?client=eliane`), mais o botão de atualizar agora no cabeçalho.
+O diário geral continua valendo para os outros. O sync da agenda só roda para
+quem tem `features.appointments`, então nenhum cliente antigo ganhou chamada de
+API a mais.
+
+**Conferência antes de publicar:**
+```bash
+node --test lib/seguros/metricas.test.ts                    # a matemática
+node --env-file=.env.local scripts/conferir_eliane.mjs      # painel x GHL ao vivo
+```
+O segundo compara os dois lados de forma independente e sai com erro em qualquer
+divergência.

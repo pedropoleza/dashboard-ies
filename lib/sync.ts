@@ -1,5 +1,5 @@
 import { supabaseDashboard, supabaseToken } from "./supabase";
-import { getAgencyToken, getLocationToken, ghlGet, fetchAllOpportunities } from "./ghl";
+import { getAgencyToken, getLocationToken, ghlGet, fetchAllOpportunities, fetchCalendars, fetchCalendarEvents } from "./ghl";
 import { normalizeSource, type Attribution } from "./sources";
 import type { ClientConfig } from "./clients";
 
@@ -78,6 +78,11 @@ export async function runSync(client: ClientConfig) {
       source_raw: o.source || null,
       source_category: normalizeSource(o.source, lastAttr, agentFirstNames),
       monetary_value: o.monetaryValue ?? 0,
+      // As tags do contato vêm embutidas na busca de oportunidades, então dão
+      // origem de lead sem custar uma sincronização de 1.200 contatos. É a
+      // única fonte de origem que existe nesta conta: `source` está preenchido
+      // em 4 de 125 leads.
+      contact_tags: Array.isArray(contact.tags) ? contact.tags : null,
       utm_source: lastAttr.utmSource ?? null,
       utm_medium: lastAttr.utmMedium ?? null,
       utm_campaign: lastAttr.utmCampaign ?? null,
@@ -98,11 +103,52 @@ export async function runSync(client: ClientConfig) {
     if (error) throw new Error("opportunities upsert: " + error.message);
   }
 
+  // --- Agendamentos (só para quem liga a feature) ---
+  let appointments = 0;
+  if (client.features.appointments) {
+    const INICIO = Date.UTC(2024, 0, 1);
+    const FIM = Date.now() + 180 * 24 * 60 * 60 * 1000;
+    const calendars = await fetchCalendars(token, client.location_id);
+    const apptRows: any[] = [];
+    for (const cal of calendars) {
+      const eventos = await fetchCalendarEvents(token, client.location_id, cal.id, INICIO, FIM);
+      for (const e of eventos) {
+        if (e.deleted) continue;
+        apptRows.push({
+          client: c,
+          id: e.id,
+          calendar_id: e.calendarId ?? cal.id,
+          calendar_name: cal.name ?? null,
+          contact_id: e.contactId ?? null,
+          contact_name: null, // o evento não traz nome; a tela junta pelo contato
+          title: e.title ?? null,
+          // `appointmentStatus` é o campo certo. O payload traz também
+          // `appoinmentStatus`, com erro de digitação, que é do GHL e não nosso.
+          status: e.appointmentStatus ?? e.appoinmentStatus ?? null,
+          start_time: isoOrNull(e.startTime),
+          end_time: isoOrNull(e.endTime),
+          assigned_user_id: e.assignedUserId ?? null,
+          created_at: isoOrNull(e.dateAdded),
+          updated_at: isoOrNull(e.dateUpdated),
+          synced_at: now,
+        });
+      }
+    }
+    for (let i = 0; i < apptRows.length; i += 500) {
+      const { error } = await supabase
+        .from("appointments")
+        .upsert(apptRows.slice(i, i + 500), { onConflict: "client,id" });
+      if (error) throw new Error("appointments upsert: " + error.message);
+    }
+    appointments = apptRows.length;
+  }
+
   const result = {
     client: c,
     stages: stageRows.length,
     agents: agentRows.length,
     opportunities: oppRows.length,
+    appointments,
     ghl_total: total,
     elapsed_ms: Date.now() - startedAt,
   };

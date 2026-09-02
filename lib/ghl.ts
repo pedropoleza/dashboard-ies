@@ -84,3 +84,51 @@ export async function fetchAllOpportunities(
   }
   return { opportunities: out, total };
 }
+
+// ─── Calendários e agendamentos ─────────────────────────────────────────────
+// A API de eventos exige janela em epoch ms e devolve `appointmentStatus`
+// (confirmed | showed | noshow | cancelled | invalid). É ela que dá reunião
+// marcada, realizada e no-show COM histórico, ao contrário do webhook, que só
+// enxerga o que chegou depois de ligado.
+
+const VERSION_CALENDARIO = "2021-04-15";
+
+async function fetchJsonVersao(url: string, token: string, versao: string): Promise<any> {
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Version: versao, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`GHL ${res.status} @ ${url}: ${(await res.text()).slice(0, 300)}`);
+  }
+  return res.json();
+}
+
+export async function fetchCalendars(token: string, locationId: string): Promise<any[]> {
+  const res = await fetchJsonVersao(`${BASE}/calendars/?locationId=${locationId}`, token, VERSION);
+  return res.calendars ?? [];
+}
+
+/**
+ * Eventos de um calendário numa janela, em fatias de 120 dias. A API responde
+ * por janela, e pedir dois anos de uma vez já voltou truncado em outras contas,
+ * então fatiar é o que garante que nada some no meio.
+ */
+export async function fetchCalendarEvents(
+  token: string,
+  locationId: string,
+  calendarId: string,
+  startMs: number,
+  endMs: number,
+): Promise<any[]> {
+  const FATIA = 120 * 24 * 60 * 60 * 1000;
+  const porId = new Map<string, any>();
+  for (let ini = startMs; ini < endMs; ini += FATIA) {
+    const fim = Math.min(ini + FATIA, endMs);
+    const url =
+      `${BASE}/calendars/events?locationId=${locationId}&calendarId=${calendarId}` +
+      `&startTime=${ini}&endTime=${fim}`;
+    const res = await fetchJsonVersao(url, token, VERSION_CALENDARIO);
+    for (const e of res.events ?? []) porId.set(e.id, e);
+  }
+  return [...porId.values()];
+}
