@@ -1,0 +1,22 @@
+{
+  "slug": "client-slug",
+  "name": "Client Display Name",
+  "code": "CLI",
+  "city": "City, ST",
+  "location_id": "<GHL location id>",
+  "company_id": "TdmQMjj86Y3LgppiB96K",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "locale": "pt-BR",
+  "accent": "#2f54eb",
+  "pipeline_id": null,
+  "sdr_user_ids": [],
+  "appt_stage_min": 4,
+  "won_stage_min": 999,
+  "appt_stage_ids": [],
+  "won_stage_ids": [],
+  "call_min_seconds": 0,
+  "won_label": "Fechados",
+  "features": { "kpis": true, "funnel": true, "leadOrigin": true, "sdr": true, "peopleInService": true },
+  "active": true
+}

@@ -1,0 +1,57 @@
+{
+  "slug": "jonathan",
+  "name": "Jonathan Duque",
+  "code": "JD",
+  "city": "Miami, FL",
+  "location_id": "p98J95UDEF0sFMi8puw2",
+  "company_id": "TdmQMjj86Y3LgppiB96K",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "locale": "pt-BR",
+  "accent": "#0f766e",
+  "pipeline_id": "B14d1onKeLfQdLgeA3CL",
+  "sdr_user_ids": ["7Fg0EQOdYZltEcSVKKrR", "rHM71JI7Rzy9rBitKd96"],
+  "appt_stage_min": 5,
+  "won_stage_min": 11,
+  "appt_stage_ids": [
+    "b93047da-4c21-46f0-a081-a59a06851e6f",
+    "312d6520-42bb-4ac3-a8db-b9d749d02e13",
+    "dfbd6309-3b2c-4b9e-ab47-f01f31972496",
+    "35724afe-d95e-4be8-bbdd-a795eb619d9b",
+    "d604791e-a47d-4fba-ba5a-4498137993c2",
+    "80cc6edf-3a7e-4c43-a490-044c2905e52f"
+  ],
+  "won_stage_ids": [
+    "dfbd6309-3b2c-4b9e-ab47-f01f31972496",
+    "35724afe-d95e-4be8-bbdd-a795eb619d9b",
+    "d604791e-a47d-4fba-ba5a-4498137993c2",
+    "80cc6edf-3a7e-4c43-a490-044c2905e52f"
+  ],
+  "call_min_seconds": 45,
+  "won_label": "Vendas",
+  "pipelines": [
+    {
+      "id": "B14d1onKeLfQdLgeA3CL",
+      "label": "Vendas",
+      "won_label": "Vendas",
+      "appt_stage_ids": ["b93047da-4c21-46f0-a081-a59a06851e6f", "312d6520-42bb-4ac3-a8db-b9d749d02e13", "dfbd6309-3b2c-4b9e-ab47-f01f31972496", "35724afe-d95e-4be8-bbdd-a795eb619d9b", "d604791e-a47d-4fba-ba5a-4498137993c2", "80cc6edf-3a7e-4c43-a490-044c2905e52f"],
+      "won_stage_ids": ["dfbd6309-3b2c-4b9e-ab47-f01f31972496", "35724afe-d95e-4be8-bbdd-a795eb619d9b", "d604791e-a47d-4fba-ba5a-4498137993c2", "80cc6edf-3a7e-4c43-a490-044c2905e52f"]
+    },
+    {
+      "id": "7nTJrFrY8RLUpyCiBniT",
+      "label": "Recrutamento",
+      "won_label": "Recrutados",
+      "appt_stage_ids": ["5d25ead4-d8a8-43b0-b258-d2d3d0ffe109", "3235e243-5944-407a-a7ab-9afcb9e33389", "325f4a33-ec84-4617-abf8-b7a4ec7b3d7e", "d85c9de3-190e-4451-8bbe-93bf2e5f613c", "878200c8-caf0-4d87-9261-8831dcb90dae", "8b638661-26b9-4d21-92b0-ca7c28f7ae65", "5cdd3b06-4a1f-4b63-a6cc-1bd88ba2376c"],
+      "won_stage_ids": ["5cdd3b06-4a1f-4b63-a6cc-1bd88ba2376c"]
+    },
+    {
+      "id": "Gyk9UPgulqrhymQvX5H8",
+      "label": "Eventos",
+      "won_label": "Confirmados",
+      "appt_stage_ids": ["4caa1c38-2fee-4d01-a2de-a9233b159a43", "6d72875c-2524-40bd-b17c-9f3cd2fd48f0"],
+      "won_stage_ids": ["4caa1c38-2fee-4d01-a2de-a9233b159a43"]
+    }
+  ],
+  "features": { "kpis": true, "funnel": true, "leadOrigin": true, "sdr": true, "peopleInService": true },
+  "active": true
+}

@@ -1,0 +1,22 @@
+{
+  "slug": "ies",
+  "name": "Ideal English School",
+  "code": "IES",
+  "city": "Orlando, FL",
+  "location_id": "NdzeZDCKa8NmcmwsCU8T",
+  "company_id": "TdmQMjj86Y3LgppiB96K",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "locale": "pt-BR",
+  "accent": "#2f54eb",
+  "pipeline_id": "yFzM7pTqiXtv97VgUmrp",
+  "sdr_user_ids": ["XPWXdRjI12y5UVibDVlr", "CirmRGMsIBwDa2cFkomo", "LSythoflKP6SQnTO68j1"],
+  "appt_stage_min": 4,
+  "won_stage_min": 7,
+  "appt_stage_ids": [],
+  "won_stage_ids": [],
+  "call_min_seconds": 0,
+  "won_label": "Matrículas",
+  "features": { "kpis": true, "funnel": true, "leadOrigin": true, "sdr": true, "peopleInService": true },
+  "active": true
+}
