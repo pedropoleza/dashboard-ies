@@ -7,25 +7,22 @@
 import { supabaseDashboard } from "@/lib/supabase";
 import type { ClientConfig } from "@/lib/clients";
 import { configSeguros } from "./config";
-import {
-  painelProspects, painelRecruiting, painelAgency, janelaAnterior, variacao,
-  type Oportunidade, type Agendamento, type Estagio, type Janela,
-} from "./metricas";
+import type { Oportunidade, Agendamento, Estagio } from "./metricas";
 
-export type DadosSeguros = {
-  prospects: ReturnType<typeof painelProspects>;
-  prospectsAnterior: ReturnType<typeof painelProspects>;
-  recruiting: ReturnType<typeof painelRecruiting>;
-  recruitingAnterior: ReturnType<typeof painelRecruiting>;
-  agency: ReturnType<typeof painelAgency>;
+/**
+ * Linhas enxutas que vão para o navegador. Só o que a matemática usa: nada de
+ * nome, e-mail ou telefone. A conta inteira tem 245 oportunidades, então cabe
+ * de sobra, e com os dados no cliente trocar de aba ou de período deixa de ser
+ * uma ida ao servidor.
+ */
+export type LinhasSeguros = {
+  ops: Oportunidade[];
+  appts: Agendamento[];
+  estagios: Estagio[];
   ultimaSync: string | null;
-  variacao: typeof variacao;
 };
 
-export async function carregarSeguros(
-  client: ClientConfig,
-  janela: Janela,
-): Promise<DadosSeguros | null> {
+export async function carregarSeguros(client: ClientConfig): Promise<LinhasSeguros | null> {
   const cfg = configSeguros(client.slug);
   if (!cfg) return null;
   const db = supabaseDashboard();
@@ -34,13 +31,13 @@ export async function carregarSeguros(
     db
       .from("opportunities")
       .select(
-        "id,name,contact_id,contact_name,pipeline_id,stage_id,status,monetary_value,contact_tags,created_at,last_stage_change_at",
+        "id,contact_id,pipeline_id,stage_id,status,monetary_value,contact_tags,created_at,last_stage_change_at",
       )
       .eq("client", client.slug)
       .limit(5000),
     db
       .from("appointments")
-      .select("id,calendar_id,contact_id,contact_name,title,status,start_time")
+      .select("id,calendar_id,status,start_time")
       .eq("client", client.slug)
       .limit(5000),
     db
@@ -56,19 +53,12 @@ export async function carregarSeguros(
       .maybeSingle(),
   ]);
 
-  const O = (ops.data ?? []) as Oportunidade[];
-  const A = (appts.data ?? []) as Agendamento[];
-  const E = (estagios.data ?? []) as Estagio[];
-  const agora = new Date();
-  const anterior = janelaAnterior(janela);
+  void cfg; // a configuração vive no cliente; aqui só garante que o perfil existe
 
   return {
-    prospects: painelProspects(O, A, E, cfg, janela, agora),
-    prospectsAnterior: painelProspects(O, A, E, cfg, anterior, agora),
-    recruiting: painelRecruiting(O, A, E, cfg, janela, agora),
-    recruitingAnterior: painelRecruiting(O, A, E, cfg, anterior, agora),
-    agency: painelAgency(O, cfg, janela),
+    ops: (ops.data ?? []) as Oportunidade[],
+    appts: (appts.data ?? []) as Agendamento[],
+    estagios: (estagios.data ?? []) as Estagio[],
     ultimaSync: (sync.data as { last_sync_at: string } | null)?.last_sync_at ?? null,
-    variacao,
   };
 }

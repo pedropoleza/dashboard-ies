@@ -14,7 +14,8 @@ import { PeopleInService } from "@/components/PeopleInService";
 import { DrillPanel } from "@/components/DrillPanel";
 import { configSeguros } from "@/lib/seguros/config";
 import { carregarSeguros } from "@/lib/seguros/dados";
-import { Painel, abaDaUrl } from "@/components/seguros/Painel";
+import { Painel } from "@/components/seguros/Painel";
+import { abaDaUrl, periodoDaUrl } from "@/lib/seguros/navegacao";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +68,10 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
   // que o painel padrão não cobre. Elas desviam aqui, com o mesmo cabeçalho,
   // mesmo seletor de período e mesmos tokens visuais.
   if (configSeguros(client.slug)) {
-    const janela = { inicio: range.start, fim: range.end };
     let seg: Awaited<ReturnType<typeof carregarSeguros>> = null;
     let erroSeg: string | null = null;
     try {
-      seg = await carregarSeguros(client, janela);
+      seg = await carregarSeguros(client);
     } catch (e) {
       erroSeg = e instanceof Error ? e.message : String(e);
     }
@@ -89,6 +89,7 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
           toValue={typeof sp.to === "string" ? sp.to : undefined}
           lastSyncAt={seg?.ultimaSync ?? null}
           sp={sp}
+          showRange={false}
         />
         <div className="mt-6 space-y-5 sm:space-y-6">
           {erroSeg ? (
@@ -106,7 +107,12 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
             </Notice>
           ) : (
             <>
-              <Painel slug={client.slug} sp={sp} aba={abaDaUrl(sp.aba)} d={seg} />
+              <Painel
+                slug={client.slug}
+                linhas={seg}
+                abaInicial={abaDaUrl(sp.aba)}
+                periodoInicial={periodoDaUrl(sp.periodo)}
+              />
               <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-xs text-ink-faint">
                 <span>Sincronizado do GoHighLevel a cada 3 horas</span>
                 <span>

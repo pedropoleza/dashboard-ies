@@ -25,6 +25,7 @@ export function Header({
   lastSyncAt,
   sp,
   activePipeline,
+  showRange,
 }: {
   client: ClientConfig;
   preset: string;
@@ -33,6 +34,8 @@ export function Header({
   lastSyncAt: string | null;
   sp: Record<string, string | string[] | undefined>;
   activePipeline?: string | null;
+  /** false quando a tela tem o próprio seletor de período (perfil seguros) */
+  showRange?: boolean;
 }) {
   const code = client.code || client.slug.toUpperCase().slice(0, 3);
   return (
@@ -54,6 +57,8 @@ export function Header({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        {showRange !== false && (
+        <>
         <nav className="range-group">
           {RANGE_OPTIONS.map((o) => (
             <Link
@@ -94,6 +99,8 @@ export function Header({
             Aplicar
           </button>
         </form>
+        </>
+        )}
 
         <div className="flex items-center gap-1.5 text-xs text-ink-faint">
           <span className="live-dot" />

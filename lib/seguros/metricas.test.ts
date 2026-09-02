@@ -15,12 +15,11 @@ const AGORA = new Date("2026-08-31T22:00:00Z");
 const CAL = cfg.calendarios.prospect[0];
 
 const ag = (p: Partial<Agendamento>): Agendamento => ({
-  id: Math.random().toString(36).slice(2), calendar_id: CAL, contact_id: null,
-  contact_name: null, title: null, status: "confirmed",
+  id: Math.random().toString(36).slice(2), calendar_id: CAL, status: "confirmed",
   start_time: "2026-08-10T14:00:00Z", ...p,
 });
 const op = (p: Partial<Oportunidade>): Oportunidade => ({
-  id: Math.random().toString(36).slice(2), name: null, contact_id: null, contact_name: null,
+  id: Math.random().toString(36).slice(2), contact_id: null,
   pipeline_id: cfg.pipelines.prospects, stage_id: null, status: "open", monetary_value: 0,
   contact_tags: null, created_at: "2026-08-10T12:00:00Z", last_stage_change_at: null, ...p,
 });

@@ -1,86 +1,153 @@
+"use client";
+
 // As três abas que a cliente pediu, com os mesmos nomes dos pipelines dela,
 // para não criar vocabulário paralelo: Prospects, Recruiting e Agency.
 //
-// Server component: os números já chegam calculados. As abas são links, não
-// estado de cliente, então funcionam com o botão voltar e podem ser mandadas
-// por mensagem apontando direto para a aba.
+// TUDO É CALCULADO NO NAVEGADOR. A conta inteira são 245 oportunidades e 48
+// agendamentos, que chegam uma vez e cabem de sobra. Antes cada clique era uma
+// navegação: ida ao servidor, consulta ao banco e re-renderização, o que dentro
+// do iframe do GHL dava a sensação de travamento mesmo com o servidor
+// respondendo em 230ms. Agora trocar de aba ou de período é só re-cálculo local,
+// e não sai pacote nenhum.
+//
+// A URL continua acompanhando (history.replaceState), então mandar o link de
+// uma aba específica segue funcionando, sem custar navegação.
 
-import Link from "next/link";
-import type { DadosSeguros } from "@/lib/seguros/dados";
+import { useEffect, useMemo, useState } from "react";
+import type { LinhasSeguros } from "@/lib/seguros/dados";
 import { configSeguros } from "@/lib/seguros/config";
+import {
+  painelProspects, painelRecruiting, painelAgency, janelaAnterior, variacao,
+} from "@/lib/seguros/metricas";
 import { fmtInt, fmtMoney } from "@/lib/format";
-import { clientHref } from "@/lib/url";
 import { Secao, Kpi, Grade, Barras, Vazio, Comparecimento } from "./Pecas";
+import { ABAS, PERIODOS, type Aba, type Periodo } from "@/lib/seguros/navegacao";
 
-type SP = Record<string, string | string[] | undefined>;
-export type Aba = "prospects" | "recruiting" | "agency";
+function janelaDe(p: Periodo): { inicio: Date; fim: Date } {
+  const fim = new Date();
+  const inicio = new Date(fim);
+  if (p === "hoje") inicio.setHours(0, 0, 0, 0);
+  else if (p === "7d") inicio.setDate(inicio.getDate() - 7);
+  else if (p === "90d") inicio.setDate(inicio.getDate() - 90);
+  else if (p === "ano") { inicio.setMonth(0, 1); inicio.setHours(0, 0, 0, 0); }
+  else if (p === "tudo") inicio.setFullYear(2000, 0, 1);
+  else inicio.setDate(inicio.getDate() - 30);
+  return { inicio, fim };
+}
 
-const ABAS: { id: Aba; rotulo: string }[] = [
-  { id: "prospects", rotulo: "Prospects" },
-  { id: "recruiting", rotulo: "Recruiting" },
-  { id: "agency", rotulo: "Agency" },
-];
-
-export function abaDaUrl(v: unknown): Aba {
-  return v === "recruiting" || v === "agency" ? v : "prospects";
+function Botoes<T extends string>({
+  itens, ativo, aoTrocar, rotuloGrupo,
+}: {
+  itens: { id: T; rotulo: string }[];
+  ativo: T;
+  aoTrocar: (v: T) => void;
+  rotuloGrupo: string;
+}) {
+  return (
+    <nav aria-label={rotuloGrupo} className="flex flex-wrap gap-1.5">
+      {itens.map((i) => {
+        const on = i.id === ativo;
+        return (
+          <button
+            key={i.id}
+            type="button"
+            onClick={() => aoTrocar(i.id)}
+            aria-current={on ? "page" : undefined}
+            className={`inline-flex min-h-11 items-center rounded-lg px-4 text-[13.5px] font-medium transition-colors ${
+              on ? "text-white" : "border border-line bg-card text-ink-soft hover:bg-paper-2/70 hover:text-ink"
+            }`}
+            style={on ? { background: "var(--color-ivy)" } : undefined}
+          >
+            {i.rotulo}
+          </button>
+        );
+      })}
+    </nav>
+  );
 }
 
 export function Painel({
   slug,
-  sp,
-  aba,
-  d,
+  linhas,
+  abaInicial,
+  periodoInicial,
 }: {
   slug: string;
-  sp: SP;
-  aba: Aba;
-  d: DadosSeguros;
+  linhas: LinhasSeguros;
+  abaInicial: Aba;
+  periodoInicial: Periodo;
 }) {
+  const [aba, setAba] = useState<Aba>(abaInicial);
+  const [periodo, setPeriodo] = useState<Periodo>(periodoInicial);
   const cfg = configSeguros(slug);
+
+  // A URL segue o estado sem navegar: link de aba continua funcionando.
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    u.searchParams.set("aba", aba);
+    u.searchParams.set("periodo", periodo);
+    window.history.replaceState(null, "", u.toString());
+  }, [aba, periodo]);
+
+  const d = useMemo(() => {
+    if (!cfg) return null;
+    const j = janelaDe(periodo);
+    const ant = janelaAnterior(j);
+    const agora = new Date();
+    const { ops, appts, estagios } = linhas;
+    return {
+      prospects: painelProspects(ops, appts, estagios, cfg, j, agora),
+      prospectsAnterior: painelProspects(ops, appts, estagios, cfg, ant, agora),
+      recruiting: painelRecruiting(ops, appts, estagios, cfg, j, agora),
+      recruitingAnterior: painelRecruiting(ops, appts, estagios, cfg, ant, agora),
+      agency: painelAgency(ops, cfg, j),
+      variacao,
+      // "Tudo" e "Este ano" não têm janela anterior comparável
+      comparavel: periodo !== "tudo" && periodo !== "ano",
+    };
+  }, [cfg, linhas, periodo]);
+
+  if (!d) return null;
+
   return (
     <div className="space-y-4">
-      <nav aria-label="Áreas" className="flex flex-wrap gap-1.5">
-        {ABAS.map((a) => {
-          const ativa = a.id === aba;
-          return (
-            <Link
-              key={a.id}
-              href={clientHref(slug, sp, { aba: a.id })}
-              scroll={false}
-              prefetch={false}
-              aria-current={ativa ? "page" : undefined}
-              className={`inline-flex min-h-11 items-center rounded-lg px-4 text-[13.5px] font-medium transition-colors ${
-                ativa
-                  ? "text-white"
-                  : "border border-line bg-card text-ink-soft hover:bg-paper-2/70 hover:text-ink"
-              }`}
-              style={ativa ? { background: "var(--color-ivy)" } : undefined}
-            >
-              {a.rotulo}
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Botoes itens={ABAS} ativo={aba} aoTrocar={setAba} rotuloGrupo="Áreas" />
+        <Botoes itens={PERIODOS} ativo={periodo} aoTrocar={setPeriodo} rotuloGrupo="Período" />
+      </div>
 
       {aba === "prospects" && <AbaProspects d={d} />}
       {aba === "recruiting" && <AbaRecruiting d={d} />}
-      {aba === "agency" && <AbaAgency d={d} cfgTem={!!cfg} />}
+      {aba === "agency" && <AbaAgency d={d} />}
     </div>
   );
 }
 
+type Dados = NonNullable<ReturnType<typeof usarDados>>;
+function usarDados() {
+  return null as unknown as {
+    prospects: ReturnType<typeof painelProspects>;
+    prospectsAnterior: ReturnType<typeof painelProspects>;
+    recruiting: ReturnType<typeof painelRecruiting>;
+    recruitingAnterior: ReturnType<typeof painelRecruiting>;
+    agency: ReturnType<typeof painelAgency>;
+    variacao: typeof variacao;
+    comparavel: boolean;
+  } | null;
+}
+
 // ── Prospects ──────────────────────────────────────────────────────────────
 
-function AbaProspects({ d }: { d: DadosSeguros }) {
+function AbaProspects({ d }: { d: Dados }) {
   const p = d.prospects;
   const a = d.prospectsAnterior;
   return (
     <div className="space-y-4">
       <Grade>
-        <Kpi rotulo="Novos leads" valor={p.novosLeads} delta={d.variacao(p.novosLeads, a.novosLeads)} sub="pela data de criação" />
-        <Kpi rotulo="Reuniões marcadas" valor={p.reunioes.agendadas} delta={d.variacao(p.reunioes.agendadas, a.reunioes.agendadas)} sub="pela data da reunião" />
-        <Kpi rotulo="Clientes" valor={p.clientesEmitidos} delta={d.variacao(p.clientesEmitidos, a.clientesEmitidos)} sub="pessoas distintas com apólice" />
-        <Kpi rotulo="Valor emitido" valor={p.valorEmitido} moeda delta={d.variacao(p.valorEmitido, a.valorEmitido)} sub={`${fmtInt(p.policiesEmitidas)} apólice(s)`} />
+        <Kpi rotulo="Novos leads" valor={p.novosLeads} delta={d.comparavel ? d.variacao(p.novosLeads, a.novosLeads) : undefined} sub="pela data de criação" />
+        <Kpi rotulo="Reuniões marcadas" valor={p.reunioes.agendadas} delta={d.comparavel ? d.variacao(p.reunioes.agendadas, a.reunioes.agendadas) : undefined} sub="pela data da reunião" />
+        <Kpi rotulo="Clientes" valor={p.clientesEmitidos} delta={d.comparavel ? d.variacao(p.clientesEmitidos, a.clientesEmitidos) : undefined} sub="pessoas distintas com apólice" />
+        <Kpi rotulo="Valor emitido" valor={p.valorEmitido} moeda delta={d.comparavel ? d.variacao(p.valorEmitido, a.valorEmitido) : undefined} sub={`${fmtInt(p.policiesEmitidas)} apólice(s)`} />
       </Grade>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
@@ -121,16 +188,16 @@ function AbaProspects({ d }: { d: DadosSeguros }) {
 
 // ── Recruiting ─────────────────────────────────────────────────────────────
 
-function AbaRecruiting({ d }: { d: DadosSeguros }) {
+function AbaRecruiting({ d }: { d: Dados }) {
   const r = d.recruiting;
   const a = d.recruitingAnterior;
   return (
     <div className="space-y-4">
       <Grade>
-        <Kpi rotulo="Novos candidatos" valor={r.novosCandidatos} delta={d.variacao(r.novosCandidatos, a.novosCandidatos)} sub="pela data de criação" />
-        <Kpi rotulo="Entrevistas marcadas" valor={r.entrevistas.agendadas} delta={d.variacao(r.entrevistas.agendadas, a.entrevistas.agendadas)} sub="pela data da entrevista" />
-        <Kpi rotulo="Entrevistas realizadas" valor={r.entrevistas.realizadas} delta={d.variacao(r.entrevistas.realizadas, a.entrevistas.realizadas)} sub="marcadas como compareceu" />
-        <Kpi rotulo="Agentes registrados" valor={r.registrados} delta={d.variacao(r.registrados, a.registrados)} sub="entraram em Registrado no período" />
+        <Kpi rotulo="Novos candidatos" valor={r.novosCandidatos} delta={d.comparavel ? d.variacao(r.novosCandidatos, a.novosCandidatos) : undefined} sub="pela data de criação" />
+        <Kpi rotulo="Entrevistas marcadas" valor={r.entrevistas.agendadas} delta={d.comparavel ? d.variacao(r.entrevistas.agendadas, a.entrevistas.agendadas) : undefined} sub="pela data da entrevista" />
+        <Kpi rotulo="Entrevistas realizadas" valor={r.entrevistas.realizadas} delta={d.comparavel ? d.variacao(r.entrevistas.realizadas, a.entrevistas.realizadas) : undefined} sub="marcadas como compareceu" />
+        <Kpi rotulo="Agentes registrados" valor={r.registrados} delta={d.comparavel ? d.variacao(r.registrados, a.registrados) : undefined} sub="entraram em Registrado no período" />
       </Grade>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
@@ -172,7 +239,7 @@ function AbaRecruiting({ d }: { d: DadosSeguros }) {
 
 // ── Agency ─────────────────────────────────────────────────────────────────
 
-function AbaAgency({ d }: { d: DadosSeguros; cfgTem: boolean }) {
+function AbaAgency({ d }: { d: Dados }) {
   const g = d.agency;
   const comAgentes = g.porNivel.filter((n) => n.total > 0);
   return (

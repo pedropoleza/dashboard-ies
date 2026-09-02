@@ -22,9 +22,7 @@ export const SEM_ORIGEM = "Sem origem";
 
 export type Oportunidade = {
   id: string;
-  name: string | null;
   contact_id: string | null;
-  contact_name: string | null;
   pipeline_id: string | null;
   stage_id: string | null;
   status: string | null;
@@ -37,9 +35,6 @@ export type Oportunidade = {
 export type Agendamento = {
   id: string;
   calendar_id: string | null;
-  contact_id: string | null;
-  contact_name: string | null;
-  title: string | null;
   status: string | null;
   start_time: string | null;
 };
