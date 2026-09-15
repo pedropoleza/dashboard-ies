@@ -21,9 +21,34 @@ import {
 } from "@/lib/seguros/metricas";
 import { fmtInt, fmtMoney } from "@/lib/format";
 import { Secao, Kpi, Grade, Barras, Vazio, Comparecimento } from "./Pecas";
-import { ABAS, PERIODOS, type Aba, type Periodo } from "@/lib/seguros/navegacao";
+import { ABAS, PERIODOS, type Aba, type Periodo, type DataIso } from "@/lib/seguros/navegacao";
 
-function janelaDe(p: Periodo): { inicio: Date; fim: Date } {
+/** YYYY-MM-DD no fuso do navegador. `fimDoDia` inclui o dia escolhido inteiro,
+ *  senao escolher "10 a 12" perderia tudo que aconteceu no dia 12. */
+function diaDe(s: DataIso, fimDoDia: boolean): Date | null {
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  if (Number.isNaN(d.getTime())) return null;
+  if (fimDoDia) d.setHours(23, 59, 59, 999);
+  else d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Par de datas so vale se as duas existem e estao na ordem certa. */
+export function janelaCustomValida(de: DataIso, ate: DataIso): { inicio: Date; fim: Date } | null {
+  const i = diaDe(de, false);
+  const f = diaDe(ate, true);
+  return i && f && i <= f ? { inicio: i, fim: f } : null;
+}
+
+function janelaDe(p: Periodo, de: DataIso, ate: DataIso): { inicio: Date; fim: Date } {
+  // Par invalido NUNCA derruba a tela: cai no padrao de 30 dias. Dentro do
+  // iframe do GHL um erro de render vira quadrado branco sem explicacao.
+  if (p === "custom") {
+    const j = janelaCustomValida(de, ate);
+    if (j) return j;
+  }
   const fim = new Date();
   const inicio = new Date(fim);
   if (p === "hoje") inicio.setHours(0, 0, 0, 0);
@@ -33,6 +58,76 @@ function janelaDe(p: Periodo): { inicio: Date; fim: Date } {
   else if (p === "tudo") inicio.setFullYear(2000, 0, 1);
   else inicio.setDate(inicio.getDate() - 30);
   return { inicio, fim };
+}
+
+function hojeIso(): DataIso {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const CAMPO_DATA =
+  "min-h-11 rounded-lg border border-line bg-card px-3 text-[13.5px] text-ink " +
+  "outline-none transition-colors focus:border-ink-faint";
+
+/** Datas escolhidas a mao. Convive com os botoes: escolher as duas liga o
+ *  periodo "custom", clicar num botao limpa as datas. */
+function SeletorDeData({
+  de, ate, aoTrocar, ativo, aoLimpar,
+}: {
+  de: DataIso;
+  ate: DataIso;
+  aoTrocar: (de: DataIso, ate: DataIso) => void;
+  ativo: boolean;
+  aoLimpar: () => void;
+}) {
+  const max = hojeIso();
+  const invalido = !!de && !!ate && !janelaCustomValida(de, ate);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <label className="flex items-center gap-1.5">
+        <span className="text-[12.5px] text-ink-faint">de</span>
+        <input
+          type="date"
+          value={de}
+          max={ate || max}
+          onChange={(e) => aoTrocar(e.target.value, ate)}
+          aria-label="Data inicial"
+          aria-invalid={invalido || undefined}
+          className={CAMPO_DATA}
+          style={ativo ? { borderColor: "var(--color-ivy)" } : undefined}
+        />
+      </label>
+      <label className="flex items-center gap-1.5">
+        <span className="text-[12.5px] text-ink-faint">até</span>
+        <input
+          type="date"
+          value={ate}
+          min={de || undefined}
+          max={max}
+          onChange={(e) => aoTrocar(de, e.target.value)}
+          aria-label="Data final"
+          aria-invalid={invalido || undefined}
+          className={CAMPO_DATA}
+          style={ativo ? { borderColor: "var(--color-ivy)" } : undefined}
+        />
+      </label>
+      {(de || ate) && (
+        <button
+          type="button"
+          onClick={aoLimpar}
+          className="inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+        >
+          limpar
+        </button>
+      )}
+      {invalido && (
+        <span role="status" className="text-[12.5px] text-ink-faint">
+          a data final precisa ser igual ou depois da inicial
+        </span>
+      )}
+    </div>
+  );
 }
 
 function Botoes<T extends string>({
@@ -71,27 +166,64 @@ export function Painel({
   linhas,
   abaInicial,
   periodoInicial,
+  deInicial = "",
+  ateInicial = "",
 }: {
   slug: string;
   linhas: LinhasSeguros;
   abaInicial: Aba;
   periodoInicial: Periodo;
+  deInicial?: DataIso;
+  ateInicial?: DataIso;
 }) {
   const [aba, setAba] = useState<Aba>(abaInicial);
   const [periodo, setPeriodo] = useState<Periodo>(periodoInicial);
+  const [de, setDe] = useState<DataIso>(deInicial);
+  const [ate, setAte] = useState<DataIso>(ateInicial);
   const cfg = configSeguros(slug);
+
+  // Botao de periodo e datas a mao sao o MESMO controle, visto de dois jeitos.
+  // Clicar num botao limpa as datas, senao a tela mostraria "30 dias" aceso com
+  // um intervalo escolhido a mao valendo por baixo.
+  function trocarPeriodo(p: Periodo) {
+    setPeriodo(p);
+    setDe("");
+    setAte("");
+  }
+
+  // So vira "custom" quando as duas datas formam um intervalo valido. Enquanto
+  // ela digita a primeira, o painel segue mostrando o periodo anterior.
+  function trocarDatas(novoDe: DataIso, novoAte: DataIso) {
+    setDe(novoDe);
+    setAte(novoAte);
+    if (janelaCustomValida(novoDe, novoAte)) setPeriodo("custom");
+    else if (periodo === "custom") setPeriodo("30d");
+  }
+
+  function limparDatas() {
+    setDe("");
+    setAte("");
+    if (periodo === "custom") setPeriodo("30d");
+  }
 
   // A URL segue o estado sem navegar: link de aba continua funcionando.
   useEffect(() => {
     const u = new URL(window.location.href);
     u.searchParams.set("aba", aba);
     u.searchParams.set("periodo", periodo);
+    if (periodo === "custom") {
+      u.searchParams.set("de", de);
+      u.searchParams.set("ate", ate);
+    } else {
+      u.searchParams.delete("de");
+      u.searchParams.delete("ate");
+    }
     window.history.replaceState(null, "", u.toString());
-  }, [aba, periodo]);
+  }, [aba, periodo, de, ate]);
 
   const d = useMemo(() => {
     if (!cfg) return null;
-    const j = janelaDe(periodo);
+    const j = janelaDe(periodo, de, ate);
     const ant = janelaAnterior(j);
     const agora = new Date();
     const { ops, appts, estagios } = linhas;
@@ -103,9 +235,11 @@ export function Painel({
       agency: painelAgency(ops, cfg, j),
       variacao,
       // "Tudo" e "Este ano" não têm janela anterior comparável
+      // Intervalo escolhido a mao TEM janela anterior comparavel: e um periodo
+      // fechado, ao contrario de "tudo" e "este ano".
       comparavel: periodo !== "tudo" && periodo !== "ano",
     };
-  }, [cfg, linhas, periodo]);
+  }, [cfg, linhas, periodo, de, ate]);
 
   if (!d) return null;
 
@@ -113,7 +247,16 @@ export function Painel({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Botoes itens={ABAS} ativo={aba} aoTrocar={setAba} rotuloGrupo="Áreas" />
-        <Botoes itens={PERIODOS} ativo={periodo} aoTrocar={setPeriodo} rotuloGrupo="Período" />
+        <div className="flex flex-col gap-2 sm:items-end">
+          <Botoes itens={PERIODOS} ativo={periodo} aoTrocar={trocarPeriodo} rotuloGrupo="Período" />
+          <SeletorDeData
+            de={de}
+            ate={ate}
+            aoTrocar={trocarDatas}
+            ativo={periodo === "custom"}
+            aoLimpar={limparDatas}
+          />
+        </div>
       </div>
 
       {aba === "prospects" && <AbaProspects d={d} />}

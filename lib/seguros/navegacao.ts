@@ -3,7 +3,10 @@
 // não pode ser chamada de lá.
 
 export type Aba = "prospects" | "recruiting" | "agency";
-export type Periodo = "hoje" | "7d" | "30d" | "90d" | "ano" | "tudo";
+export type Periodo = "hoje" | "7d" | "30d" | "90d" | "ano" | "tudo" | "custom";
+
+/** Uma data escolhida a mao, no formato YYYY-MM-DD, ou vazio. */
+export type DataIso = string;
 
 export const ABAS: { id: Aba; rotulo: string }[] = [
   { id: "prospects", rotulo: "Prospects" },
@@ -25,5 +28,12 @@ export function abaDaUrl(v: unknown): Aba {
 }
 
 export function periodoDaUrl(v: unknown): Periodo {
+  if (v === "custom") return "custom";
   return PERIODOS.some((p) => p.id === v) ? (v as Periodo) : "30d";
+}
+
+/** Aceita so YYYY-MM-DD. Qualquer outra coisa vira vazio, porque data invalida
+ *  vinda da URL nao pode derrubar o painel dentro do iframe do GHL. */
+export function dataDaUrl(v: unknown): DataIso {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
 }

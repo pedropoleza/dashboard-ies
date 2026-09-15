@@ -15,7 +15,7 @@ import { DrillPanel } from "@/components/DrillPanel";
 import { configSeguros } from "@/lib/seguros/config";
 import { carregarSeguros } from "@/lib/seguros/dados";
 import { Painel } from "@/components/seguros/Painel";
-import { abaDaUrl, periodoDaUrl } from "@/lib/seguros/navegacao";
+import { abaDaUrl, periodoDaUrl, dataDaUrl } from "@/lib/seguros/navegacao";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +112,8 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
                 linhas={seg}
                 abaInicial={abaDaUrl(sp.aba)}
                 periodoInicial={periodoDaUrl(sp.periodo)}
+                deInicial={dataDaUrl(sp.de)}
+                ateInicial={dataDaUrl(sp.ate)}
               />
               <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-xs text-ink-faint">
                 <span>Sincronizado do GoHighLevel a cada 3 horas</span>
