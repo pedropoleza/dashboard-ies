@@ -39,9 +39,9 @@ function camposDeSeguros(o: any, cfg: ConfigSeguros) {
 
 /**
  * Apaga o que o GHL não devolveu nesta rodada, senão oportunidade removida lá segue
- * contando no painel para sempre (em 04/11 eram 9 na Eliane: 7 em vez de 3 no estágio
- * Primeira reunião marcada). Um teto protege contra resposta incompleta da API: rodada
- * que apagaria mais de um quarto da base não apaga nada e avisa no log.
+ * contando no painel para sempre (em 04/11 eram 9 na Eliane, com 7 em vez de 3 no estágio
+ * Primeira reunião marcada, e 278 no Jonathan). Um teto protege contra resposta incompleta
+ * da API: rodada que apagaria mais de um quarto da base não apaga nada e avisa no log.
  */
 async function removerFantasmas(
   supabase: ReturnType<typeof supabaseDashboard>,
@@ -67,7 +67,35 @@ async function removerFantasmas(
   return n;
 }
 
+/** A falha só existia na resposta do cron, que ninguém lê: a Ideal English School ficou
+ *  um mês sem sincronizar sem deixar rastro. `last_sync_at` fica como está, porque é a
+ *  última vez que deu certo e é o que a tela mostra. */
+async function registrarFalha(client: string, erro: unknown) {
+  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  const agora = new Date().toISOString();
+  console.error(`[sync] ${client} falhou: ${mensagem}`);
+  try {
+    await supabaseDashboard()
+      .from("sync_state")
+      .upsert(
+        { client, id: "opportunities", status: "error", detail: { error: mensagem.slice(0, 500), at: agora }, updated_at: agora },
+        { onConflict: "client,id" },
+      );
+  } catch (e) {
+    console.error(`[sync] ${client}: nao consegui registrar a falha`, e);
+  }
+}
+
 export async function runSync(client: ClientConfig) {
+  try {
+    return await sincronizar(client);
+  } catch (e) {
+    await registrarFalha(client.slug, e);
+    throw e;
+  }
+}
+
+async function sincronizar(client: ClientConfig) {
   const startedAt = Date.now();
   const c = client.slug;
   const supabase = supabaseDashboard();
@@ -163,10 +191,9 @@ export async function runSync(client: ClientConfig) {
     if (error) throw new Error("opportunities upsert: " + error.message);
   }
 
-  // Só com a lista completa na mão, e só no perfil seguros: os outros clientes têm o
-  // mesmo problema, mas limpar a base deles muda números que ninguém pediu para mudar.
+  // Só com a lista completa na mão: resposta parcial da API não pode apagar nada.
   const removidasOps =
-    seguros && total === opportunities.length
+    total === opportunities.length
       ? await removerFantasmas(supabase, "opportunities", c, now, oppRows.length)
       : 0;
 
@@ -209,7 +236,7 @@ export async function runSync(client: ClientConfig) {
       if (error) throw new Error("appointments upsert: " + error.message);
     }
     appointments = apptRows.length;
-    if (seguros) removidosAppts = await removerFantasmas(supabase, "appointments", c, now, apptRows.length);
+    removidosAppts = await removerFantasmas(supabase, "appointments", c, now, apptRows.length);
   }
 
   const result = {

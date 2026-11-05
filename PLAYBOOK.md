@@ -86,6 +86,11 @@ Ask Pedro to add them in the GHL webhook — they arrive under `customData`.
   `TOKEN_SUPABASE_URL/SERVICE_ROLE_KEY` (read agency token), `CRON_SECRET`, `WEBHOOK_SECRET`, `DEFAULT_CLIENT`.
 - **Sync cadence:** Vercel cron daily (Hobby plan limit). Manual/instant: `GET /api/cron/sync?client=<slug>&secret=…`.
 - **Local preview:** `npm run dev`, dashboards at `localhost:3000/<slug>`.
+- **Sync que falhou:** fica em `sync_state` com `status = 'error'` e o motivo em `detail`, e o cron
+  responde 500. `last_sync_at` continua sendo a última vez que deu certo.
+- **Cliente que saiu:** `active = false` em `clients` e no JSON. O cron para de tentar, e a base e a
+  rota continuam lá. A Ideal English School (`ies`) saiu assim em 04/11/2026: a sub-conta está
+  desativada no GHL.
 
 ---
 
@@ -121,8 +126,8 @@ e os campos de agente do contato estão preenchidos em 8 de 1.200):
   que a Camila apontou em 02/11/2026;
 - o estágio "Registrado" do Recruiting fica vazio, porque quem registra vai para
   Agency. Ele só soma, para quem ainda está lá, a entrada no estágio;
-- o sync apaga o que o GHL não devolveu (só neste perfil, com a lista completa e com
-  teto de um quarto da base), senão oportunidade removida lá conta para sempre;
+- o sync apaga o que o GHL não devolveu (com a lista completa e com teto de um quarto
+  da base; vale para todos os clientes), senão oportunidade removida lá conta para sempre;
 - o período é sempre no fuso da conta (`lib/seguros/janela.ts`), não no do navegador:
   a Eliane está em Nova York e a Camila no Brasil.
 

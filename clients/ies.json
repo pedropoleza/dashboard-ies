@@ -18,5 +18,5 @@
   "call_min_seconds": 0,
   "won_label": "Matrículas",
   "features": { "kpis": true, "funnel": true, "leadOrigin": true, "sdr": true, "peopleInService": true },
-  "active": true
+  "active": false
 }

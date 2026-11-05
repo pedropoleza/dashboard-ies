@@ -32,5 +32,8 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, synced: results.length, results });
+  // Com falha a resposta é 500, para aparecer como erro nos logs do cron da Vercel. O
+  // sucesso dos outros clientes continua valendo, e a falha fica também em sync_state.
+  const falhou = results.some((r) => r.error);
+  return NextResponse.json({ ok: !falhou, synced: results.length, results }, { status: falhou ? 500 : 200 });
 }
