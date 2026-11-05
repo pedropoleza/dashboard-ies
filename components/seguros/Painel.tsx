@@ -22,49 +22,7 @@ import {
 import { fmtInt, fmtMoney } from "@/lib/format";
 import { Secao, Kpi, Grade, Barras, Vazio, Comparecimento } from "./Pecas";
 import { ABAS, PERIODOS, type Aba, type Periodo, type DataIso } from "@/lib/seguros/navegacao";
-
-/** YYYY-MM-DD no fuso do navegador. `fimDoDia` inclui o dia escolhido inteiro,
- *  senao escolher "10 a 12" perderia tudo que aconteceu no dia 12. */
-function diaDe(s: DataIso, fimDoDia: boolean): Date | null {
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const d = new Date(+m[1], +m[2] - 1, +m[3]);
-  if (Number.isNaN(d.getTime())) return null;
-  if (fimDoDia) d.setHours(23, 59, 59, 999);
-  else d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-/** Par de datas so vale se as duas existem e estao na ordem certa. */
-export function janelaCustomValida(de: DataIso, ate: DataIso): { inicio: Date; fim: Date } | null {
-  const i = diaDe(de, false);
-  const f = diaDe(ate, true);
-  return i && f && i <= f ? { inicio: i, fim: f } : null;
-}
-
-function janelaDe(p: Periodo, de: DataIso, ate: DataIso): { inicio: Date; fim: Date } {
-  // Par invalido NUNCA derruba a tela: cai no padrao de 30 dias. Dentro do
-  // iframe do GHL um erro de render vira quadrado branco sem explicacao.
-  if (p === "custom") {
-    const j = janelaCustomValida(de, ate);
-    if (j) return j;
-  }
-  const fim = new Date();
-  const inicio = new Date(fim);
-  if (p === "hoje") inicio.setHours(0, 0, 0, 0);
-  else if (p === "7d") inicio.setDate(inicio.getDate() - 7);
-  else if (p === "90d") inicio.setDate(inicio.getDate() - 90);
-  else if (p === "ano") { inicio.setMonth(0, 1); inicio.setHours(0, 0, 0, 0); }
-  else if (p === "tudo") inicio.setFullYear(2000, 0, 1);
-  else inicio.setDate(inicio.getDate() - 30);
-  return { inicio, fim };
-}
-
-function hojeIso(): DataIso {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+import { hojeNoFuso, janelaCustomValida, janelaDoPeriodo } from "@/lib/seguros/janela";
 
 const CAMPO_DATA =
   "min-h-11 rounded-lg border border-line bg-card px-3 text-[13.5px] text-ink " +
@@ -73,16 +31,17 @@ const CAMPO_DATA =
 /** Datas escolhidas a mao. Convive com os botoes: escolher as duas liga o
  *  periodo "custom", clicar num botao limpa as datas. */
 function SeletorDeData({
-  de, ate, aoTrocar, ativo, aoLimpar,
+  de, ate, fuso, aoTrocar, ativo, aoLimpar,
 }: {
   de: DataIso;
+  fuso: string;
   ate: DataIso;
   aoTrocar: (de: DataIso, ate: DataIso) => void;
   ativo: boolean;
   aoLimpar: () => void;
 }) {
-  const max = hojeIso();
-  const invalido = !!de && !!ate && !janelaCustomValida(de, ate);
+  const max = hojeNoFuso(fuso);
+  const invalido = !!de && !!ate && !janelaCustomValida(de, ate, fuso);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <label className="flex items-center gap-1.5">
@@ -163,6 +122,7 @@ function Botoes<T extends string>({
 
 export function Painel({
   slug,
+  fuso,
   linhas,
   abaInicial,
   periodoInicial,
@@ -170,6 +130,8 @@ export function Painel({
   ateInicial = "",
 }: {
   slug: string;
+  /** fuso da conta: o dia do painel é o dela, não o de quem está olhando */
+  fuso: string;
   linhas: LinhasSeguros;
   abaInicial: Aba;
   periodoInicial: Periodo;
@@ -196,7 +158,7 @@ export function Painel({
   function trocarDatas(novoDe: DataIso, novoAte: DataIso) {
     setDe(novoDe);
     setAte(novoAte);
-    if (janelaCustomValida(novoDe, novoAte)) setPeriodo("custom");
+    if (janelaCustomValida(novoDe, novoAte, fuso)) setPeriodo("custom");
     else if (periodo === "custom") setPeriodo("30d");
   }
 
@@ -223,7 +185,7 @@ export function Painel({
 
   const d = useMemo(() => {
     if (!cfg) return null;
-    const j = janelaDe(periodo, de, ate);
+    const j = janelaDoPeriodo(periodo, de, ate, fuso);
     const ant = janelaAnterior(j);
     const agora = new Date();
     const { ops, appts, estagios } = linhas;
@@ -239,7 +201,7 @@ export function Painel({
       // fechado, ao contrario de "tudo" e "este ano".
       comparavel: periodo !== "tudo" && periodo !== "ano",
     };
-  }, [cfg, linhas, periodo, de, ate]);
+  }, [cfg, linhas, periodo, de, ate, fuso]);
 
   if (!d) return null;
 
@@ -255,7 +217,9 @@ export function Painel({
             aoTrocar={trocarDatas}
             ativo={periodo === "custom"}
             aoLimpar={limparDatas}
+            fuso={fuso}
           />
+          <p className="text-[12px] text-ink-faint">Dias no horário de {fuso === "America/New_York" ? "Nova York" : fuso}</p>
         </div>
       </div>
 
@@ -288,9 +252,9 @@ function AbaProspects({ d }: { d: Dados }) {
     <div className="space-y-4">
       <Grade>
         <Kpi rotulo="Novos leads" valor={p.novosLeads} delta={d.comparavel ? d.variacao(p.novosLeads, a.novosLeads) : undefined} sub="pela data de criação" />
-        <Kpi rotulo="Reuniões marcadas" valor={p.reunioes.agendadas} delta={d.comparavel ? d.variacao(p.reunioes.agendadas, a.reunioes.agendadas) : undefined} sub="pela data da reunião" />
-        <Kpi rotulo="Clientes" valor={p.clientesEmitidos} delta={d.comparavel ? d.variacao(p.clientesEmitidos, a.clientesEmitidos) : undefined} sub="pessoas distintas com apólice" />
-        <Kpi rotulo="Valor emitido" valor={p.valorEmitido} moeda delta={d.comparavel ? d.variacao(p.valorEmitido, a.valorEmitido) : undefined} sub={`${fmtInt(p.policiesEmitidas)} apólice(s)`} />
+        <Kpi rotulo="Reuniões marcadas" valor={p.reunioes.agendadas} delta={d.comparavel ? d.variacao(p.reunioes.agendadas, a.reunioes.agendadas) : undefined} sub="pela data da reunião, sem as canceladas" />
+        <Kpi rotulo="Clientes" valor={p.clientesEmitidos} delta={d.comparavel ? d.variacao(p.clientesEmitidos, a.clientesEmitidos) : undefined} sub="pessoas distintas, por data de emissão" />
+        <Kpi rotulo="Valor emitido" valor={p.valorEmitido} moeda delta={d.comparavel ? d.variacao(p.valorEmitido, a.valorEmitido) : undefined} sub={`${fmtInt(p.policiesEmitidas)} apólice(s), por data de emissão`} />
       </Grade>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
@@ -302,9 +266,12 @@ function AbaProspects({ d }: { d: Dados }) {
         </Secao>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Secao titulo="Origem dos leads" ajuda="Vem das tags do contato. A conta quase não usa o campo de origem do GHL, então o que não tem tag conhecida aparece como sem origem, em vez de ser adivinhado.">
           <Barras itens={p.origens.map((o) => ({ nome: o.origem, total: o.total }))} vazio="Nenhum lead novo neste período." />
+        </Secao>
+        <Secao titulo="Origem dos fechamentos" ajuda="Clientes do período, pela mesma regra de tags.">
+          <Barras itens={p.origensFechamentos.map((o) => ({ nome: o.origem, total: o.total }))} vazio="Nenhuma apólice emitida neste período." />
         </Secao>
         <Secao titulo="Conversão" ajuda="Clientes distintos no período divididos pelos leads criados no mesmo período.">
           {p.conversao === null ? (
@@ -325,6 +292,13 @@ function AbaProspects({ d }: { d: Dados }) {
           )}
         </Secao>
       </div>
+
+      <p className="text-xs leading-relaxed text-ink-faint">
+        Apólices contadas pela Policy Issue Date, a data de emissão que vem do Five Rings. Declined,
+        Not Taken e Incomplete não entram, porque não foram emitidas. Lapsed entra na data em que foi
+        emitida.
+        {p.apolicesSemData > 0 && ` ${fmtInt(p.apolicesSemData)} apólice(s) sem data de emissão ficam de fora de todos os períodos.`}
+      </p>
     </div>
   );
 }
@@ -340,7 +314,7 @@ function AbaRecruiting({ d }: { d: Dados }) {
         <Kpi rotulo="Novos candidatos" valor={r.novosCandidatos} delta={d.comparavel ? d.variacao(r.novosCandidatos, a.novosCandidatos) : undefined} sub="pela data de criação" />
         <Kpi rotulo="Entrevistas marcadas" valor={r.entrevistas.agendadas} delta={d.comparavel ? d.variacao(r.entrevistas.agendadas, a.entrevistas.agendadas) : undefined} sub="pela data da entrevista" />
         <Kpi rotulo="Entrevistas realizadas" valor={r.entrevistas.realizadas} delta={d.comparavel ? d.variacao(r.entrevistas.realizadas, a.entrevistas.realizadas) : undefined} sub="marcadas como compareceu" />
-        <Kpi rotulo="Agentes registrados" valor={r.registrados} delta={d.comparavel ? d.variacao(r.registrados, a.registrados) : undefined} sub="entraram em Registrado no período" />
+        <Kpi rotulo="Agentes registrados" valor={r.registrados} delta={d.comparavel ? d.variacao(r.registrados, a.registrados) : undefined} sub="pela data real de início (Start Date)" />
       </Grade>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
@@ -352,9 +326,12 @@ function AbaRecruiting({ d }: { d: Dados }) {
         </Secao>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Secao titulo="Origem dos candidatos" ajuda="Também pelas tags do contato.">
           <Barras itens={r.origens.map((o) => ({ nome: o.origem, total: o.total }))} vazio="Nenhum candidato novo neste período." />
+        </Secao>
+        <Secao titulo="Origem dos registros" ajuda="Agentes registrados no período, pela mesma regra de tags.">
+          <Barras itens={r.origensRegistros.map((o) => ({ nome: o.origem, total: o.total }))} vazio="Nenhum agente registrado neste período." />
         </Secao>
         <Secao titulo="Conversão para agente" ajuda="Registros no período divididos pelos candidatos criados no período.">
           {r.conversao === null ? (
@@ -368,9 +345,9 @@ function AbaRecruiting({ d }: { d: Dados }) {
                 {fmtInt(r.registrados)} registro(s) para {fmtInt(r.novosCandidatos)} candidato(s)
               </p>
               <p className="mt-3 text-xs leading-relaxed text-ink-faint">
-                Conta quem está hoje no estágio Registrado e entrou nele dentro do período. Quem
-                passou por lá e já seguiu adiante não aparece: o GHL guarda só a última mudança de
-                estágio, e preencher o resto seria invenção.
+                Registro é a data real de início do agente (Start Date, no pipeline Agency). Quem
+                ainda está no estágio Registrado, esperando ir para Agency, conta pela entrada no
+                estágio. Quem registrou neste mês pode ter sido candidato antes.
               </p>
             </div>
           )}
@@ -389,9 +366,9 @@ function AbaAgency({ d }: { d: Dados }) {
     <div className="space-y-4">
       <Grade>
         <Kpi rotulo="Total de agentes" valor={g.total} sub="no pipeline Agency" />
-        <Kpi rotulo="Ativos" valor={g.ativos} sub="fora de Agente inativo" />
-        <Kpi rotulo="Inativos" valor={g.inativos} destaque={false} sub="inativos ou abandonados" />
-        <Kpi rotulo="Novos no período" valor={g.novosNoPeriodo} sub="entraram no pipeline" />
+        <Kpi rotulo="Ativos" valor={g.ativos} sub="sem marcação de inativo" />
+        <Kpi rotulo="Inativos" valor={g.inativos} destaque={false} sub="Agent Status inativo ou oportunidade abandonada" />
+        <Kpi rotulo="Novos no período" valor={g.novosNoPeriodo} sub="pela data real de início (Start Date)" />
       </Grade>
 
       <Secao
@@ -412,10 +389,14 @@ function AbaAgency({ d }: { d: Dados }) {
             onde os níveis de carreira vivem e o que a conta movimenta na mão.
           </li>
           <li>
-            <b className="font-medium text-ink">Novos no período</b> usa a entrada da pessoa no
-            pipeline. A data em que o agente foi de fato registrado só existe de forma confiável
-            para quem está hoje no estágio Registrado do funil de recrutamento, e é assim que a aba
-            Recruiting a conta.
+            <b className="font-medium text-ink">Novos no período</b> usa a data real de início do
+            agente (Start Date), que vem do Five Rings. É a mesma conta de Agentes registrados, na
+            aba Recruiting.
+            {g.semDataDeInicio > 0 && ` ${fmtInt(g.semDataDeInicio)} agente(s) sem essa data ficam de fora dos períodos, mas entram no total.`}
+          </li>
+          <li>
+            <b className="font-medium text-ink">Inativos</b> são os que o Five Rings marca como
+            Inactive, os do estágio Agente inativo e os de oportunidade abandonada.
           </li>
         </ul>
       </Secao>

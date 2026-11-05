@@ -8,10 +8,12 @@
 // propósito:
 //   · lead novo        -> created_at da oportunidade
 //   · reunião          -> start_time do agendamento (a data da reunião)
-//   · apólice emitida  -> created_at da oportunidade em Policies (decisão do
-//                         Pedro; o campo do contato só cobre 28 de 75)
-//   · registro/nível   -> last_stage_change_at (o GHL devolve em 100% das
-//                         oportunidades, então serve inclusive pro histórico)
+//   · apólice emitida  -> Policy Issue Date da oportunidade em Policies. A criação da
+//                         oportunidade é o dia em que o sync do Five Rings importou
+//                         (28 apólices em 11/09/2025, 22 em 18/05/2026), não a emissão.
+//   · agente registrado -> Start Date da oportunidade em Agency, a data real. O estágio
+//                         Registrado do Recruiting fica vazio: quem registra vai para
+//                         Agency e sai de lá.
 
 // `import type` some na compilação e no type-stripping do node, então o teste
 // roda sem resolver este caminho. SEM_ORIGEM mora aqui porque é a matemática
@@ -30,6 +32,12 @@ export type Oportunidade = {
   contact_tags: string[] | null;
   created_at: string | null;
   last_stage_change_at: string | null;
+  /** data de calendário (YYYY-MM-DD), do campo Policy Issue Date */
+  policy_issue_date: string | null;
+  policy_status: string | null;
+  agent_status: string | null;
+  /** data de calendário (YYYY-MM-DD), do campo Start Date */
+  agent_start_date: string | null;
 };
 
 export type Agendamento = {
@@ -48,12 +56,29 @@ const dentro = (iso: string | null | undefined, j: Janela) => {
   return Number.isFinite(t) && t >= j.inicio.getTime() && t < j.fim.getTime();
 };
 
+/** Para data de calendário, sem hora. Meio-dia UTC cai no mesmo dia em Nova York e no
+ *  Brasil, então a apólice emitida no dia 10 fica no dia 10 para as duas. */
+const dentroDoDia = (dia: string | null | undefined, j: Janela) =>
+  dia ? dentro(`${dia.slice(0, 10)}T12:00:00Z`, j) : false;
+
 export const doPipeline = (ops: Oportunidade[], pid: string) =>
   ops.filter((o) => o.pipeline_id === pid);
+
+/** Uma linha por pessoa: quem tem duas apólices é um cliente só. */
+function umaPorPessoa(ops: Oportunidade[]): Oportunidade[] {
+  const vistos = new Set<string>();
+  return ops.filter((o) => {
+    const k = o.contact_id ?? o.id;
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+}
 
 // ── Reuniões e entrevistas ─────────────────────────────────────────────────
 
 export type Comparecimento = {
+  /** sem as canceladas: reunião cancelada não é reunião marcada */
   agendadas: number;
   realizadas: number;
   noShows: number;
@@ -92,7 +117,7 @@ export function comparecimento(
   ).length;
   const base = realizadas + noShows;
   return {
-    agendadas: nossos.length,
+    agendadas: nossos.length - canceladas,
     realizadas,
     noShows,
     canceladas,
@@ -154,9 +179,12 @@ export type PainelProspects = {
   clientesEmitidos: number;
   policiesEmitidas: number;
   valorEmitido: number;
+  /** emitidas sem Policy Issue Date: não entram em período nenhum, então a tela avisa */
+  apolicesSemData: number;
   conversao: number | null;
   funil: FatiaDeFunil[];
   origens: FatiaDeOrigem[];
+  origensFechamentos: FatiaDeOrigem[];
 };
 
 export function painelProspects(
@@ -169,18 +197,24 @@ export function painelProspects(
 ): PainelProspects {
   const leads = doPipeline(ops, cfg.pipelines.prospects);
   const novos = leads.filter((o) => dentro(o.created_at, j));
-  const apolices = doPipeline(ops, cfg.pipelines.policies).filter((o) => dentro(o.created_at, j));
+  // Declined, Not Taken e Incomplete nunca foram emitidas, mesmo com data preenchida.
+  const emitidas = doPipeline(ops, cfg.pipelines.policies).filter(
+    (o) => !cfg.apoliceNaoEmitida.includes((o.policy_status ?? "").toLowerCase().trim()),
+  );
+  const apolices = emitidas.filter((o) => dentroDoDia(o.policy_issue_date, j));
   // "clientes únicos": a mesma pessoa pode ter mais de uma apólice no período.
-  const clientes = new Set(apolices.map((o) => o.contact_id ?? o.id));
+  const clientes = umaPorPessoa(apolices);
   return {
     novosLeads: novos.length,
     reunioes: comparecimento(appts, cfg.calendarios.prospect, j, agora),
-    clientesEmitidos: clientes.size,
+    clientesEmitidos: clientes.length,
     policiesEmitidas: apolices.length,
     valorEmitido: apolices.reduce((t, o) => t + (Number(o.monetary_value) || 0), 0),
-    conversao: novos.length > 0 ? clientes.size / novos.length : null,
+    apolicesSemData: emitidas.filter((o) => !o.policy_issue_date).length,
+    conversao: novos.length > 0 ? clientes.length / novos.length : null,
     funil: porEstagio(ops, estagios, cfg.pipelines.prospects),
     origens: porOrigem(novos, cfg),
+    origensFechamentos: porOrigem(clientes, cfg),
   };
 }
 
@@ -193,6 +227,7 @@ export type PainelRecruiting = {
   conversao: number | null;
   funil: FatiaDeFunil[];
   origens: FatiaDeOrigem[];
+  origensRegistros: FatiaDeOrigem[];
 };
 
 export function painelRecruiting(
@@ -205,12 +240,13 @@ export function painelRecruiting(
 ): PainelRecruiting {
   const cands = doPipeline(ops, cfg.pipelines.recruiting);
   const novos = cands.filter((o) => dentro(o.created_at, j));
-  // Registro = está HOJE no estágio "Registrado" e entrou nele dentro da
-  // janela. Quem passou por lá e seguiu adiante não é contado: o GHL só guarda
-  // a ÚLTIMA mudança de estágio, e inventar o resto seria pior que faltar.
-  const registrados = cands.filter(
-    (o) => o.stage_id === cfg.estagios.registrado && dentro(o.last_stage_change_at, j),
-  );
+  // Registrado de verdade = começou como agente na janela (Start Date, no pipeline
+  // Agency). Quem ainda está no estágio Registrado do Recruiting, esperando ir para
+  // Agency, conta pela entrada no estágio. A mesma pessoa nos dois conta uma vez.
+  const registrados = umaPorPessoa([
+    ...doPipeline(ops, cfg.pipelines.agency).filter((o) => dentroDoDia(o.agent_start_date, j)),
+    ...cands.filter((o) => o.stage_id === cfg.estagios.registrado && dentro(o.last_stage_change_at, j)),
+  ]);
   return {
     novosCandidatos: novos.length,
     entrevistas: comparecimento(appts, cfg.calendarios.recruiting, j, agora),
@@ -218,6 +254,7 @@ export function painelRecruiting(
     conversao: novos.length > 0 ? registrados.length / novos.length : null,
     funil: porEstagio(ops, estagios, cfg.pipelines.recruiting),
     origens: porOrigem(novos, cfg),
+    origensRegistros: porOrigem(registrados, cfg),
   };
 }
 
@@ -228,20 +265,27 @@ export type PainelAgency = {
   ativos: number;
   inativos: number;
   novosNoPeriodo: number;
+  /** sem Start Date: não entram em período nenhum, então a tela avisa */
+  semDataDeInicio: number;
   porNivel: { nome: string; curto: string; total: number }[];
 };
 
 export function painelAgency(ops: Oportunidade[], cfg: ConfigSeguros, j: Janela): PainelAgency {
   const agentes = doPipeline(ops, cfg.pipelines.agency);
-  // Inativo = está no estágio "Agente inativo" OU a oportunidade foi abandonada.
+  // Inativo = o Five Rings diz Inactive, está no estágio "Agente inativo" ou a
+  // oportunidade foi abandonada. O campo vem primeiro: há agente Inactive em estágio
+  // de carreira e com a oportunidade marcada como ganha.
   const ehInativo = (o: Oportunidade) =>
-    o.stage_id === cfg.estagios.agenteInativo || o.status === "abandoned";
+    (o.agent_status ?? "").toLowerCase().trim() === "inactive" ||
+    o.stage_id === cfg.estagios.agenteInativo ||
+    o.status === "abandoned";
   const inativos = agentes.filter(ehInativo);
   return {
     total: agentes.length,
     ativos: agentes.length - inativos.length,
     inativos: inativos.length,
-    novosNoPeriodo: agentes.filter((o) => dentro(o.created_at, j)).length,
+    novosNoPeriodo: agentes.filter((o) => dentroDoDia(o.agent_start_date, j)).length,
+    semDataDeInicio: agentes.filter((o) => !o.agent_start_date).length,
     porNivel: cfg.carreira.map((n) => ({
       nome: n.nome,
       curto: n.curto,

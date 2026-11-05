@@ -31,7 +31,7 @@ export async function carregarSeguros(client: ClientConfig): Promise<LinhasSegur
     db
       .from("opportunities")
       .select(
-        "id,contact_id,pipeline_id,stage_id,status,monetary_value,contact_tags,created_at,last_stage_change_at",
+        "id,contact_id,pipeline_id,stage_id,status,monetary_value,contact_tags,created_at,last_stage_change_at,policy_issue_date,policy_status,agent_status,agent_start_date",
       )
       .eq("client", client.slug)
       .limit(5000),

@@ -165,7 +165,7 @@ export function Comparecimento({
   const linhas = [
     { nome: `${rotuloEvento} realizadas`, total: dados.realizadas, marca: "✓" },
     { nome: "Faltaram", total: dados.noShows, marca: "✕" },
-    { nome: "Canceladas", total: dados.canceladas, marca: "—" },
+    { nome: "Canceladas", total: dados.canceladas, marca: "-" },
     { nome: "Ainda vão acontecer", total: dados.futuras, marca: "→" },
     { nome: "Já passaram e ninguém marcou", total: dados.semMarcacao, marca: "?" },
   ];

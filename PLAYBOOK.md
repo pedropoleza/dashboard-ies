@@ -103,9 +103,10 @@ e os campos de agente do contato estão preenchidos em 8 de 1.200):
 | Novos leads / candidatos | oportunidades do pipeline | `created_at` |
 | Reuniões e entrevistas | tabela `appointments` (API de calendários) | `start_time` |
 | Comparecimento | `appointmentStatus` | showed ÷ (showed + noshow) |
-| Clientes e apólices | pipeline Policies | `created_at` da oportunidade |
+| Clientes e apólices | pipeline Policies, sem Declined, Not Taken e Incomplete | **Policy Issue Date** (`policy_issue_date`) |
 | Valor emitido | `monetary_value` | idem |
-| Registros de agente | estágio "Registrado" | `last_stage_change_at` |
+| Registros de agente e novos agentes | pipeline Agency | **Start Date** (`agent_start_date`) |
+| Agente ativo ou inativo | campo Agent Status, estágio e status da oportunidade | estado atual |
 | Níveis de carreira | estágios do pipeline Agency | estado atual |
 | Origem | **tags do contato**, mapeadas em `config.ts` | idem ao lead |
 
@@ -115,8 +116,15 @@ e os campos de agente do contato estão preenchidos em 8 de 1.200):
 - a taxa é `null` quando nada foi marcado, e o painel escreve isso em vez de
   mostrar 0%, que afirmaria "ninguém compareceu";
 - tag fora do mapa vira "Sem origem", nunca atribuição adivinhada;
-- "Registrado" conta quem está lá HOJE e entrou na janela: o GHL guarda só a
-  última mudança de estágio.
+- nunca usar `created_at` para apólice nem para agente: é o dia em que o sync do
+  Five Rings importou (28 apólices em 11/09/2025, 22 em 18/05/2026). Esse era o erro
+  que a Camila apontou em 02/11/2026;
+- o estágio "Registrado" do Recruiting fica vazio, porque quem registra vai para
+  Agency. Ele só soma, para quem ainda está lá, a entrada no estágio;
+- o sync apaga o que o GHL não devolveu (só neste perfil, com a lista completa e com
+  teto de um quarto da base), senão oportunidade removida lá conta para sempre;
+- o período é sempre no fuso da conta (`lib/seguros/janela.ts`), não no do navegador:
+  a Eliane está em Nova York e a Camila no Brasil.
 
 **Sincronização:** cron de 3 em 3 horas só para este cliente
 (`/api/cron/sync?client=eliane`), mais o botão de atualizar agora no cabeçalho.
@@ -126,8 +134,12 @@ API a mais.
 
 **Conferência antes de publicar:**
 ```bash
-node --test lib/seguros/metricas.test.ts                    # a matemática
+node --test lib/seguros/metricas.test.ts lib/seguros/janela.test.ts   # a matemática
 node --env-file=.env.local scripts/conferir_eliane.mjs      # painel x GHL ao vivo
 ```
-O segundo compara os dois lados de forma independente e sai com erro em qualquer
-divergência.
+O segundo compara os dois lados de forma independente, inclusive mês a mês pela data
+de emissão, e sai com erro em qualquer divergência.
+
+**Publicação:** este projeto não está ligado ao Git na Vercel. Publicar é `vercel --prod`
+a partir de uma árvore limpa, depois do commit na `main`. Migração primeiro: aplique no
+banco e rode o sync novo antes de publicar a tela que usa as colunas.

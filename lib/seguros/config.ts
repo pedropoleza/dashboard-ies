@@ -25,6 +25,20 @@ export type ConfigSeguros = {
     /** agente parado */
     agenteInativo: string;
   };
+  /** campos personalizados da oportunidade, preenchidos pelo sync do Five Rings */
+  campos: {
+    /** quando a apólice foi emitida (Issued Date) */
+    emissaoApolice: string;
+    /** Inforce, Lapsed, Declined, Not Taken, Incomplete */
+    statusApolice: string;
+    /** Active ou Inactive */
+    statusAgente: string;
+    /** data real em que o agente começou */
+    inicioAgente: string;
+  };
+  /** status de apólice que nunca chegou a ser emitida, em minúsculas. Lapsed não entra:
+   *  ela foi emitida e caiu depois, e o número pedido é o de emissões. */
+  apoliceNaoEmitida: string[];
   /** a escada de carreira, na ordem, com o id do estágio */
   carreira: { id: string; nome: string; curto: string }[];
   /**
@@ -59,6 +73,13 @@ const ELIANE: ConfigSeguros = {
     registrado: "69da0f27-1c5c-4950-a1aa-b0cc18371bfe",
     agenteInativo: "142c54b9-63da-41c5-848f-98a2a9039e59",
   },
+  campos: {
+    emissaoApolice: "y4Z12LjPJqNvaiHBYqKd",
+    statusApolice: "EAHat0M6jDhbPIagbsEe",
+    statusAgente: "K9mXgAp2vQG4sN9w9M7L",
+    inicioAgente: "jmnofrbsvrpztZqVRTZW",
+  },
+  apoliceNaoEmitida: ["declined", "not taken", "incomplete"],
   carreira: [
     { id: "c7810e12-aaeb-48c7-a553-f828a4117914", nome: "Proposed Agent", curto: "Proposto" },
     { id: "578472a9-aafc-4615-bb24-b5c1c717915d", nome: "Studying", curto: "Estudando" },
@@ -81,6 +102,10 @@ const ELIANE: ConfigSeguros = {
     "metaads": "Meta Ads",
     "meta ads": "Meta Ads",
     "campanha trafego": "Meta Ads",
+    // a campanha do Instagram de outubro chega por clique no anúncio para o WhatsApp
+    "ctwa-lead": "Meta Ads",
+    "anuncio": "Meta Ads",
+    "anuncio-facebook": "Meta Ads",
     "b2b": "B2B",
     "parceria": "Parceria",
     "personal contact": "Contato pessoal",

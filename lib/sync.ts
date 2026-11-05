@@ -2,11 +2,69 @@ import { supabaseDashboard, supabaseToken } from "./supabase";
 import { getAgencyToken, getLocationToken, ghlGet, fetchAllOpportunities, fetchCalendars, fetchCalendarEvents } from "./ghl";
 import { normalizeSource, type Attribution } from "./sources";
 import type { ClientConfig } from "./clients";
+import { configSeguros, type ConfigSeguros } from "./seguros/config";
 
 function isoOrNull(v: unknown): string | null {
   if (!v) return null;
   const d = new Date(v as string);
   return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Valor de um campo personalizado da oportunidade, venha como texto, data ou número. */
+function campoDa(o: any, id: string): string | number | null {
+  const f = (o.customFields ?? []).find((c: any) => c.id === id);
+  return f ? (f.fieldValueString ?? f.fieldValueDate ?? f.fieldValueNumber ?? null) : null;
+}
+
+/** Os campos de data do GHL chegam em milissegundos, na meia-noite UTC do dia: o dia é
+ *  o da data em UTC, e converter para o fuso da conta jogaria tudo para a véspera. */
+function diaOuNull(v: string | number | null): string | null {
+  if (v === null || v === "") return null;
+  const ms = typeof v === "number" || /^\d{10,}$/.test(v) ? Number(v) : Date.parse(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : null;
+}
+
+function camposDeSeguros(o: any, cfg: ConfigSeguros) {
+  const texto = (id: string) => {
+    const v = campoDa(o, id);
+    return v === null ? null : String(v);
+  };
+  return {
+    policy_issue_date: diaOuNull(campoDa(o, cfg.campos.emissaoApolice)),
+    policy_status: texto(cfg.campos.statusApolice),
+    agent_status: texto(cfg.campos.statusAgente),
+    agent_start_date: diaOuNull(campoDa(o, cfg.campos.inicioAgente)),
+  };
+}
+
+/**
+ * Apaga o que o GHL não devolveu nesta rodada, senão oportunidade removida lá segue
+ * contando no painel para sempre (em 04/11 eram 9 na Eliane: 7 em vez de 3 no estágio
+ * Primeira reunião marcada). Um teto protege contra resposta incompleta da API: rodada
+ * que apagaria mais de um quarto da base não apaga nada e avisa no log.
+ */
+async function removerFantasmas(
+  supabase: ReturnType<typeof supabaseDashboard>,
+  tabela: "opportunities" | "appointments",
+  client: string,
+  rodada: string,
+  vivos: number,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from(tabela)
+    .select("id", { count: "exact", head: true })
+    .eq("client", client)
+    .lt("synced_at", rodada);
+  if (error) throw new Error(`${tabela} fantasmas: ${error.message}`);
+  const n = count ?? 0;
+  if (n === 0) return 0;
+  if (n > Math.max(25, vivos / 4)) {
+    console.warn(`[sync] ${client}: ${n} ${tabela} sumiram do GHL de uma vez (vivas: ${vivos}), nao apaguei`);
+    return 0;
+  }
+  const { error: erroDel } = await supabase.from(tabela).delete().eq("client", client).lt("synced_at", rodada);
+  if (erroDel) throw new Error(`${tabela} remocao: ${erroDel.message}`);
+  return n;
 }
 
 export async function runSync(client: ClientConfig) {
@@ -16,6 +74,7 @@ export async function runSync(client: ClientConfig) {
   const agencyToken = await getAgencyToken(supabaseToken());
   const token = await getLocationToken(agencyToken, client.company_id, client.location_id);
   const now = new Date().toISOString();
+  const seguros = configSeguros(c);
 
   // --- Pipelines / stages ---
   const pipelinesRes = await ghlGet(token, `/opportunities/pipelines?locationId=${client.location_id}`);
@@ -83,6 +142,7 @@ export async function runSync(client: ClientConfig) {
       // única fonte de origem que existe nesta conta: `source` está preenchido
       // em 4 de 125 leads.
       contact_tags: Array.isArray(contact.tags) ? contact.tags : null,
+      ...(seguros ? camposDeSeguros(o, seguros) : {}),
       utm_source: lastAttr.utmSource ?? null,
       utm_medium: lastAttr.utmMedium ?? null,
       utm_campaign: lastAttr.utmCampaign ?? null,
@@ -103,8 +163,16 @@ export async function runSync(client: ClientConfig) {
     if (error) throw new Error("opportunities upsert: " + error.message);
   }
 
+  // Só com a lista completa na mão, e só no perfil seguros: os outros clientes têm o
+  // mesmo problema, mas limpar a base deles muda números que ninguém pediu para mudar.
+  const removidasOps =
+    seguros && total === opportunities.length
+      ? await removerFantasmas(supabase, "opportunities", c, now, oppRows.length)
+      : 0;
+
   // --- Agendamentos (só para quem liga a feature) ---
   let appointments = 0;
+  let removidosAppts = 0;
   if (client.features.appointments) {
     const INICIO = Date.UTC(2024, 0, 1);
     const FIM = Date.now() + 180 * 24 * 60 * 60 * 1000;
@@ -141,6 +209,7 @@ export async function runSync(client: ClientConfig) {
       if (error) throw new Error("appointments upsert: " + error.message);
     }
     appointments = apptRows.length;
+    if (seguros) removidosAppts = await removerFantasmas(supabase, "appointments", c, now, apptRows.length);
   }
 
   const result = {
@@ -149,6 +218,7 @@ export async function runSync(client: ClientConfig) {
     agents: agentRows.length,
     opportunities: oppRows.length,
     appointments,
+    fantasmas_removidos: { opportunities: removidasOps, appointments: removidosAppts },
     ghl_total: total,
     elapsed_ms: Date.now() - startedAt,
   };

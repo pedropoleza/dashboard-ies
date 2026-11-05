@@ -71,6 +71,27 @@ for (const st of ["showed", "noshow", "confirmed", "cancelled"]) {
   checar(`agendamentos ${st}`, [...eventos.values()].filter((e) => (e.appointmentStatus ?? "") === st).length, appts.filter((a) => a.status === st).length);
 }
 
+// ── Datas que decidem número (apólice e agente), mês a mês ──
+const CAMPOS = { emissao: "y4Z12LjPJqNvaiHBYqKd", statusApolice: "EAHat0M6jDhbPIagbsEe", statusAgente: "K9mXgAp2vQG4sN9w9M7L", inicio: "jmnofrbsvrpztZqVRTZW" };
+const campo = (o, id) => { const c = (o.customFields ?? []).find((x) => x.id === id); return c ? (c.fieldValueString ?? c.fieldValueDate ?? null) : null; };
+const dia = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+const POL = "iRtCRZQww1qV6m3nAezT", AG = "RJhGPwWjWrPf21IOSwNo";
+const { data: opsDatas } = await db.from("opportunities").select("id,pipeline_id,monetary_value,policy_issue_date,policy_status,agent_status,agent_start_date").eq("client", SLUG).limit(5000);
+const polVivo = vivo.filter((o) => o.pipelineId === POL), polBanco = opsDatas.filter((o) => o.pipeline_id === POL);
+const fora = ["declined", "not taken", "incomplete"];
+const mesVivo = {}, mesBanco = {}, valVivoMes = {}, valBancoMes = {};
+for (const o of polVivo) { if (fora.includes(String(campo(o, CAMPOS.statusApolice)).toLowerCase())) continue; const m = dia(campo(o, CAMPOS.emissao))?.slice(0, 7) ?? "sem data"; mesVivo[m] = (mesVivo[m] ?? 0) + 1; valVivoMes[m] = (valVivoMes[m] ?? 0) + (o.monetaryValue ?? 0); }
+for (const o of polBanco) { if (fora.includes(String(o.policy_status).toLowerCase())) continue; const m = o.policy_issue_date?.slice(0, 7) ?? "sem data"; mesBanco[m] = (mesBanco[m] ?? 0) + 1; valBancoMes[m] = (valBancoMes[m] ?? 0) + Number(o.monetary_value ?? 0); }
+for (const m of [...new Set([...Object.keys(mesVivo), ...Object.keys(mesBanco)])].sort()) {
+  checar(`apólices emitidas em ${m}`, mesVivo[m] ?? 0, mesBanco[m] ?? 0);
+  checar(`valor emitido em ${m} (US$)`, Math.round(valVivoMes[m] ?? 0), Math.round(valBancoMes[m] ?? 0));
+}
+const agVivo = vivo.filter((o) => o.pipelineId === AG), agBanco = opsDatas.filter((o) => o.pipeline_id === AG);
+checar("agentes com data de início", agVivo.filter((o) => campo(o, CAMPOS.inicio)).length, agBanco.filter((o) => o.agent_start_date).length);
+checar("agentes Inactive", agVivo.filter((o) => campo(o, CAMPOS.statusAgente) === "Inactive").length, agBanco.filter((o) => o.agent_status === "Inactive").length);
+const idsVivos = new Set(vivo.map((o) => o.id));
+checar("fantasmas no painel (tem que ser 0)", 0, ops.filter((o) => !idsVivos.has(o.id)).length);
+
 const comTagVivo = vivo.filter((o) => Array.isArray(o.contact?.tags)).length;
 checar("oportunidades com tags do contato", comTagVivo, ops.filter((o) => o.contact_tags !== null).length);
 
