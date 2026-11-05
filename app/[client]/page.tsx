@@ -109,6 +109,7 @@ export default async function ClientDashboard({ params, searchParams }: PageProp
             <>
               <Painel
                 slug={client.slug}
+                fuso={client.timezone}
                 linhas={seg}
                 abaInicial={abaDaUrl(sp.aba)}
                 periodoInicial={periodoDaUrl(sp.periodo)}
